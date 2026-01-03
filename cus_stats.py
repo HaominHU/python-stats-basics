@@ -206,30 +206,46 @@ def logit_forward(X, y, covariate_columns=None, significance_level=.05):
 
 # Non parametric tests
 # Chi-square contigeny table
-def chi_square_cont(observed_lists, cus_strings):
-    group = []
-    outcome = []
-    for idx in range(len(observed_lists)):
-        group += [cus_strings[idx]] * len(observed_lists[idx])
-        outcome += observed_lists[idx]
-    df_observed = pd.DataFrame({'group': group, 'outcome': outcome})
-    observed = pd.crosstab(df_observed['group'], df_observed['outcome'])
+def chi_square_cont(data, group_col=None, outcome_col=None):
+    if isinstance(data, pd.DataFrame) and group_col is not None and outcome_col is not None:
+        observed = pd.crosstab(data[group_col], data[outcome_col])
+    else:
+        # Fallback for list of lists input
+        observed_lists = data
+        cus_strings = group_col
+        group = []
+        outcome = []
+        for idx in range(len(observed_lists)):
+            group += [cus_strings[idx]] * len(observed_lists[idx])
+            outcome += observed_lists[idx]
+        df_observed = pd.DataFrame({'group': group, 'outcome': outcome})
+        observed = pd.crosstab(df_observed['group'], df_observed['outcome'])
+
     chi2, p, dof, expected = stats.chi2_contingency(observed)
     print(f"Contingency Table:\n{observed}")
+    rates = observed.div(observed.sum(axis=0), axis=1) * 100
+    print(f"Rates of Group in each Outcome (%):\n{rates.round(2)}")
     print(f"Chi-Square Statistic: {chi2}")
     print(f"P-Value: {p}")
     print(f"Degrees of Freedom: {dof}")
     print(f"Expected Frequencies: \n{expected}")
 
 # Fisher's Exact Test 2x2
-def fisher_exact_test(observed_lists, cus_strings):
-    group = []
-    outcome = []
-    for idx in range(len(observed_lists)):
-        group += [cus_strings[idx]] * len(observed_lists[idx])
-        outcome += observed_lists[idx]
-    df_observed = pd.DataFrame({'group': group, 'outcome': outcome})
-    observed = pd.crosstab(df_observed['group'], df_observed['outcome'])
+def fisher_exact_test(data, group_col=None, outcome_col=None):
+    if isinstance(data, pd.DataFrame) and group_col is not None and outcome_col is not None:
+        observed = pd.crosstab(data[group_col], data[outcome_col])
+    else:
+        # Fallback for list of lists input
+        observed_lists = data
+        cus_strings = group_col
+        group = []
+        outcome = []
+        for idx in range(len(observed_lists)):
+            group += [cus_strings[idx]] * len(observed_lists[idx])
+            outcome += observed_lists[idx]
+        df_observed = pd.DataFrame({'group': group, 'outcome': outcome})
+        observed = pd.crosstab(df_observed['group'], df_observed['outcome'])
+
     odds_ratio, p = stats.fisher_exact(observed)
     print(f"Contingency Table:\n{observed}")
     print(f"Odds Ratio: {odds_ratio}")
