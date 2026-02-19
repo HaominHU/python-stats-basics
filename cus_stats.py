@@ -6,7 +6,6 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from statsmodels.stats.contingency_tables import mcnemar
 # smf.ols, smf.glm
-import pingouin as pg
 import pandas as pd
 
 def unique_total(series):
