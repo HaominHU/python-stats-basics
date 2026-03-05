@@ -43,14 +43,47 @@ def get_freq_table_with_percentage(series, total):
         print(f"{index}: {count}/{total} ({count/total*100:.2f}%)")
 
 # Correlation
-def get_correlation_matrix(df, cols, method):
-    print(f"Correlation Matrix:\n")
-    print(df[cols].rcorr(method=method))
-    return df[cols].rcorr(method=method)
+def get_correlation_matrix(df, cols, method='spearman'):
+    """Pairwise correlation matrix using scipy. Returns a square r-value DataFrame."""
+    from itertools import combinations
+    import numpy as np
+    result = pd.DataFrame(index=cols, columns=cols, dtype=float)
+    for c in cols:
+        result.loc[c, c] = 1.0
+    for x, y in combinations(cols, 2):
+        pair = df[[x, y]].dropna()
+        if method == 'pearson':
+            r, _ = stats.pearsonr(pair[x], pair[y])
+        else:
+            r, _ = stats.spearmanr(pair[x], pair[y])
+        result.loc[x, y] = round(r, 4)
+        result.loc[y, x] = round(r, 4)
+    print(f"Correlation Matrix ({method}):\n")
+    print(result)
+    return result
 
-def get_correlation(df, cols, method):
-    print(f"Correlation value:\n")
-    print(df[cols].pairwise_corr(method=method))
+def get_correlation(df, cols, method='spearman'):
+    """Pairwise correlations using scipy. method = 'pearson' or 'spearman'."""
+    from itertools import combinations
+    rows = []
+    for x, y in combinations(cols, 2):
+        pair = df[[x, y]].dropna()
+        n = len(pair)
+        if method == 'pearson':
+            r, p = stats.pearsonr(pair[x], pair[y])
+        else:
+            r, p = stats.spearmanr(pair[x], pair[y])
+        rows.append({
+            'X': x,
+            'Y': y,
+            'method': method,
+            'n': n,
+            'r': round(r, 4),
+            'p-val': '<0.001' if p < 0.001 else f'{p:.4f}',
+        })
+    result = pd.DataFrame(rows)
+    display(result)
+    return result
 
 # Assumptions Basic
 
@@ -179,6 +212,107 @@ def linear_regression(df, iv_name, dv_name, covar_names=None, significance_level
         print(f"---------- Model Fit: ----------".center(100))
         print(reg_model.summary())
 
+# Report-ready OLS helpers ────────────────────────────────────────────────────
+def run_ols_simple(df, dv, iv, label=None, total_n=None):
+    """
+    Simple OLS regression (no covariates). Returns a clean results table.
+
+    Parameters
+    ----------
+    df       : DataFrame with at least [dv, iv] columns
+    dv       : str, dependent variable
+    iv       : str, independent variable (main predictor)
+    label    : str, optional display label
+    total_n  : int, optional reference N for missing count; defaults to len(df)
+    """
+    df_model = df[[dv, iv]].dropna().reset_index(drop=True)
+    N       = len(df_model)
+    ref_n   = total_n if total_n is not None else len(df)
+    missing = ref_n - N
+
+    X = sm.add_constant(df_model[[iv]])
+    y = df_model[dv]
+    result = sm.OLS(y, X).fit()
+
+    conf = result.conf_int()
+    conf.columns = ['CI_lower', 'CI_upper']
+
+    table = pd.DataFrame({
+        'Predictor': result.params.index,
+        'B':         result.params.values.round(4),
+        'SE':        result.bse.values.round(4),
+        'p-value':   result.pvalues.values.round(4),
+        'CI_lower':  conf['CI_lower'].values.round(4),
+        'CI_upper':  conf['CI_upper'].values.round(4),
+    })
+    table = table[table['Predictor'] != 'const'].reset_index(drop=True)
+    table['p-value'] = table['p-value'].apply(lambda p: '<0.001' if p < 0.001 else f'{p:.4f}')
+
+    hdr = label if label else f'OLS: {iv} \u2192 {dv}'
+    print(f"\n{'\u2500'*60}")
+    print(f"  {hdr}")
+    print(f"  N = {N} | Missing = {missing}")
+    print(f"{'\u2500'*60}")
+    try:
+        display(table)
+    except NameError:
+        print(table.to_string(index=False))
+    return table
+
+
+def run_ols_cov(df, dv, iv, covariates, label=None, total_n=None, covariate_df=None):
+    """
+    OLS regression with covariates. Returns a clean results table.
+
+    Parameters
+    ----------
+    df           : DataFrame with at least [SubjectID, dv, iv] columns
+    dv           : str, dependent variable
+    iv           : str, independent variable (main predictor)
+    covariates   : list of str, covariate column names
+    label        : str, optional display label
+    total_n      : int, optional reference N; defaults to len(df)
+    covariate_df : optional DataFrame with [SubjectID] + covariates columns.
+                   If provided, left-merged onto df by SubjectID before fitting.
+    """
+    if covariate_df is not None:
+        df = df.merge(covariate_df[['SubjectID'] + covariates], on='SubjectID', how='left')
+    model_cols = [dv, iv] + covariates
+    df_model = df[model_cols].dropna().reset_index(drop=True)
+    N       = len(df_model)
+    ref_n   = total_n if total_n is not None else len(df)
+    missing = ref_n - N
+
+    X = sm.add_constant(df_model[[iv] + covariates])
+    y = df_model[dv]
+    result = sm.OLS(y, X).fit()
+
+    conf = result.conf_int()
+    conf.columns = ['CI_lower', 'CI_upper']
+
+    table = pd.DataFrame({
+        'Predictor': result.params.index,
+        'B':         result.params.values.round(4),
+        'SE':        result.bse.values.round(4),
+        'p-value':   result.pvalues.values.round(4),
+        'CI_lower':  conf['CI_lower'].values.round(4),
+        'CI_upper':  conf['CI_upper'].values.round(4),
+    })
+    table = table[table['Predictor'] != 'const'].reset_index(drop=True)
+    table['p-value'] = table['p-value'].apply(lambda p: '<0.001' if p < 0.001 else f'{p:.4f}')
+
+    hdr = label if label else f'OLS+cov: {iv} \u2192 {dv}'
+    print(f"\n{'\u2500'*60}")
+    print(f"  {hdr}")
+    print(f"  N = {N} | Missing = {missing}")
+    print(f"{'\u2500'*60}")
+    try:
+        display(table)
+    except NameError:
+        print(table.to_string(index=False))
+    return table
+
+
 # Logistic Regress
 def logit_forward(X, y, covariate_columns=None, significance_level=.05):
     included_features = covariate_columns.copy() if covariate_columns else []
@@ -210,6 +344,86 @@ def logit_forward(X, y, covariate_columns=None, significance_level=.05):
             break
 
     return included_features
+
+
+def run_logit_cov(df, dv, iv, covariates, label=None, total_n=None, covariate_df=None):
+    """
+    Logistic regression with covariates. DV must be binary (0/1).
+    Tries newton \u2192 bfgs \u2192 lbfgs; skips if N \u2264 n_params + 5.
+
+    Parameters
+    ----------
+    df           : DataFrame with at least [SubjectID, dv, iv] columns
+    dv           : str, binary dependent variable (0/1)
+    iv           : str, independent variable (main predictor)
+    covariates   : list of str, covariate column names
+    label        : str, optional display label
+    total_n      : int, optional reference N; defaults to len(df)
+    covariate_df : optional DataFrame with [SubjectID] + covariates columns.
+                   If provided, left-merged onto df by SubjectID before fitting.
+
+    Returns
+    -------
+    pd.DataFrame with Predictor, B (log-OR), OR, SE, p-value, OR_CI_lower,
+    OR_CI_upper — or None if skipped/failed.
+    """
+    import numpy as np
+    if covariate_df is not None:
+        df = df.merge(covariate_df[['SubjectID'] + covariates], on='SubjectID', how='left')
+    model_cols = [dv, iv] + covariates
+    df_model = df[model_cols].dropna().reset_index(drop=True)
+    N       = len(df_model)
+    ref_n   = total_n if total_n is not None else len(df)
+    missing = ref_n - N
+    n_params = 1 + len([iv] + covariates)
+
+    hdr = label if label else f'Logit+cov: {iv} \u2192 {dv}'
+    print(f"\n{'\u2500'*60}")
+    print(f"  {hdr}")
+    print(f"  N = {N} | Missing = {missing}")
+    if N <= n_params + 5:
+        print(f"  \u26a0 Skipped: N={N} too small for {n_params} parameters.")
+        print(f"{'\u2500'*60}")
+        return None
+
+    X = sm.add_constant(df_model[[iv] + covariates])
+    y = df_model[dv].astype(int)
+
+    result = None
+    for method in ('newton', 'bfgs', 'lbfgs'):
+        try:
+            result = sm.Logit(y, X).fit(method=method, disp=False, maxiter=200)
+            break
+        except Exception:
+            continue
+
+    if result is None:
+        print(f"  \u26a0 Model failed to converge with all methods.")
+        print(f"{'\u2500'*60}")
+        return None
+
+    conf = result.conf_int()
+    conf.columns = ['CI_lower', 'CI_upper']
+
+    table = pd.DataFrame({
+        'Predictor':   result.params.index,
+        'B (log-OR)':  result.params.values.round(4),
+        'OR':          np.exp(result.params.values).round(4),
+        'SE':          result.bse.values.round(4),
+        'p-value':     result.pvalues.values.round(4),
+        'OR_CI_lower': np.exp(conf['CI_lower'].values).round(4),
+        'OR_CI_upper': np.exp(conf['CI_upper'].values).round(4),
+    })
+    table = table[table['Predictor'] != 'const'].reset_index(drop=True)
+    table['p-value'] = table['p-value'].apply(lambda p: '<0.001' if p < 0.001 else f'{p:.4f}')
+
+    print(f"{'\u2500'*60}")
+    try:
+        display(table)
+    except NameError:
+        print(table.to_string(index=False))
+    return table
+
 
 # Non parametric tests
 # Chi-square contigeny table
