@@ -97,12 +97,20 @@ def ttest_assumption(series1, series2, cus_string1, cus_string2):
     return shapiro_p1, shapiro_p2, levene_p
 
 # independent t-test
-def ttest(series1, series2, cus_string1, cus_string2):
-    print(f"t-test between {cus_string1} and {cus_string2}: {stats.ttest_ind(series1, series2)}")
+def ttest(series1, series2, cus_string1, cus_string2, label=None):
+    t_stat, p_val = stats.ttest_ind(series1, series2)
+    row = {"comparison": f"{cus_string1} vs {cus_string2}", "t_statistic": t_stat, "p_value": p_val}
+    if label is not None:
+        row["label"] = label
+    return pd.DataFrame([row])
 
 # paired t-test
-def paired_ttest(before, after, cus_string_before, cus_string_after):
-    print(f"Paired t-test between {cus_string_before} and {cus_string_after}: {stats.ttest_rel(before, after)}")
+def paired_ttest(before, after, cus_string_before, cus_string_after, label=None):
+    t_stat, p_val = stats.ttest_rel(before, after)
+    row = {"comparison": f"paired: {cus_string_before} vs {cus_string_after}", "t_statistic": t_stat, "p_value": p_val}
+    if label is not None:
+        row["label"] = label
+    return pd.DataFrame([row])
 
 # ANOVA
 def anova_assumption(series_arr, group_names):
@@ -205,7 +213,7 @@ def logit_forward(X, y, covariate_columns=None, significance_level=.05):
 
 # Non parametric tests
 # Chi-square contigeny table
-def chi_square_cont(data, group_col=None, outcome_col=None):
+def chi_square_cont(data, group_col=None, outcome_col=None, label=None):
     if isinstance(data, pd.DataFrame) and group_col is not None and outcome_col is not None:
         observed = pd.crosstab(data[group_col], data[outcome_col])
     else:
@@ -221,13 +229,16 @@ def chi_square_cont(data, group_col=None, outcome_col=None):
         observed = pd.crosstab(df_observed['group'], df_observed['outcome'])
 
     chi2, p, dof, expected = stats.chi2_contingency(observed)
-    print(f"Contingency Table:\n{observed}")
     rates = observed.div(observed.sum(axis=0), axis=1) * 100
-    print(f"Rates of Group in each Outcome (%):\n{rates.round(2)}")
-    print(f"Chi-Square Statistic: {chi2}")
-    print(f"P-Value: {p}")
-    print(f"Degrees of Freedom: {dof}")
-    print(f"Expected Frequencies: \n{expected}")
+    results_row = {"chi2": chi2, "p_value": p, "dof": dof}
+    if label is not None:
+        results_row["label"] = label
+    return {
+        "results": pd.DataFrame([results_row]),
+        "contingency_table": observed,
+        "rates": rates.round(2),
+        "expected": pd.DataFrame(expected, index=observed.index, columns=observed.columns)
+    }
 
 # Fisher's Exact Test 2x2
 def fisher_exact_test(data, group_col=None, outcome_col=None):
