@@ -488,10 +488,12 @@ def mcnemar_test(df, before_str, after_str):
     print(f"p-value: {result.pvalue:.4f}")
 
 # Mann-Whitney U test
-def mann_whitney_u(control, treat, ctrl_string, treat_string):
-    u_statistic, p = stats.mannwhitneyu(control, treat)
-    print(f'U-Statistic between {ctrl_string} and {treat_string}: {u_statistic}')
-    print(f'P-Value: {p}')
+def mann_whitney_u(control, treat, ctrl_string, treat_string, label=None):
+    u_statistic, p_val = stats.mannwhitneyu(control, treat)
+    row = {"comparison": f"{ctrl_string} vs {treat_string}", "u_statistic": u_statistic, "p_value": p_val}
+    if label is not None:
+        row["label"] = label
+    return pd.DataFrame([row])
 
 # Kruskal-Wallis H test
 def kruskal_wallis_h(series_arr, group_names):
