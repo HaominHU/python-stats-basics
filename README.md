@@ -10,7 +10,7 @@ Clone the project and navigate to the project directory:
 ```bash
 cd /path/to/your/package
 ```
-Install the module package:
+Install the module package in editable mode (so you don't need to reinstall after editing):
 ```bash
 pip install -e .
 ```
