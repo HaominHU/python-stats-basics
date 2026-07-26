@@ -42,6 +42,101 @@ def get_freq_table_with_percentage(series, total):
     for index, count in series.value_counts().sort_index().items():
         print(f"{index}: {count}/{total} ({count/total*100:.2f}%)")
 
+
+def cronbach_alpha_analysis(df, start_col=0, end_col=None, drop_incomplete_rows=True, report_label=None):
+    """
+    Compute Cronbach's alpha and item diagnostics for a set of scale items.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Source dataframe that contains item columns.
+    start_col : int, default 0
+        Start column index (0-based, inclusive) for item selection.
+    end_col : int or None, default None
+        End column index (0-based, exclusive). None means select to the last column.
+    drop_incomplete_rows : bool, default True
+        If True, keep only complete cases across selected items.
+    report_label : str or None, default None
+        Optional label used in printed summary.
+
+    Returns
+    -------
+    dict with:
+        alpha: float
+        n_rows: int
+        n_items: int
+        items_complete: pd.DataFrame
+        item_total_corr: pd.Series
+        alpha_if_dropped: pd.Series
+    """
+    items = df.iloc[:, start_col:end_col].apply(pd.to_numeric, errors='coerce')
+    items_complete = items.dropna(axis=0, how='any') if drop_incomplete_rows else items
+
+    k = items_complete.shape[1]
+    n = items_complete.shape[0]
+
+    if k < 2:
+        raise ValueError("Need at least 2 items (columns) to compute Cronbach's alpha.")
+    if n < 2:
+        raise ValueError("Need at least 2 rows to compute Cronbach's alpha.")
+
+    item_variances = items_complete.var(axis=0, ddof=1)
+    total_scores = items_complete.sum(axis=1)
+    total_variance = total_scores.var(ddof=1)
+
+    if total_variance == 0:
+        raise ValueError("Total score variance is 0; Cronbach's alpha is undefined.")
+
+    alpha = (k / (k - 1)) * (1 - item_variances.sum() / total_variance)
+
+    item_total_corr = {}
+    for col in items_complete.columns:
+        rest_score = total_scores - items_complete[col]
+        item_total_corr[col] = items_complete[col].corr(rest_score)
+
+    alpha_if_dropped = {}
+    for col in items_complete.columns:
+        subset = items_complete.drop(columns=[col])
+        k_sub = subset.shape[1]
+
+        if k_sub < 2:
+            alpha_if_dropped[col] = math.nan
+            continue
+
+        total_sub = subset.sum(axis=1)
+        total_var_sub = total_sub.var(ddof=1)
+        if total_var_sub == 0:
+            alpha_if_dropped[col] = math.nan
+            continue
+
+        var_sub = subset.var(axis=0, ddof=1)
+        alpha_if_dropped[col] = (k_sub / (k_sub - 1)) * (1 - var_sub.sum() / total_var_sub)
+
+    item_total_corr_s = pd.Series(item_total_corr).round(3)
+    alpha_if_dropped_s = pd.Series(alpha_if_dropped).round(4)
+
+    label = report_label if report_label is not None else f"columns {start_col + 1}+"
+    print(f"Cronbach's alpha ({label}): {alpha:.4f}")
+    print(f"Using {n} rows and {k} items.")
+
+    print("\nCorrected item-total correlations:")
+    for col, corr in item_total_corr_s.items():
+        print(f"  {col}: {corr}")
+
+    print("\nAlpha if item dropped:")
+    for col, a in alpha_if_dropped_s.items():
+        print(f"  {col}: {a}")
+
+    return {
+        'alpha': alpha,
+        'n_rows': n,
+        'n_items': k,
+        'items_complete': items_complete,
+        'item_total_corr': item_total_corr_s,
+        'alpha_if_dropped': alpha_if_dropped_s,
+    }
+
 # Correlation
 def get_correlation_matrix(df, cols, method='spearman'):
     """Pairwise correlation matrix using scipy. Returns a square r-value DataFrame."""
